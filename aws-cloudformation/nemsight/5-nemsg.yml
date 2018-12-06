@@ -1,0 +1,447 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+Description: securitygroup.template - Template for the security groups.
+Parameters:
+  Environment:
+    Default: Development
+    Type: String
+    Description: Application environment for which this network is being created.
+      e.g. Development/Production.
+    AllowedValues:
+    - Development
+    - Integration
+    - PreProduction
+    - Production
+    - QA
+    - Staging
+    - Test
+  VPCID:
+    Type: AWS::EC2::VPC::Id
+    Description: Select Virtual Private Cloud ID.
+Resources:
+  PublicRDPSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      SecurityGroupIngress:
+      - ToPort: 3389
+        IpProtocol: tcp
+        CidrIp: 0.0.0.0/0
+        FromPort: 3389
+      VpcId:
+        Ref: VPCID
+      GroupDescription: Allow public RDP traffic.
+      Tags:
+      - Key: Environment
+        Value:
+          Ref: Environment
+      - Key: Name
+        Value:
+          Fn::Sub: "${Environment}-PublicRDPSecurityGroup"
+      - Key: ServiceProvider
+        Value: Rackspace
+  PublicSSHSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      SecurityGroupIngress:
+      - ToPort: 22
+        IpProtocol: tcp
+        CidrIp: 0.0.0.0/0
+        FromPort: 22
+      VpcId:
+        Ref: VPCID
+      GroupDescription: Allow public SSH traffic.
+      Tags:
+      - Key: Environment
+        Value:
+          Ref: Environment
+      - Key: Name
+        Value:
+          Fn::Sub: "${Environment}-PublicSSHSecurityGroup"
+      - Key: ServiceProvider
+        Value: Rackspace
+  PrivateSSHSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      SecurityGroupIngress:
+      - ToPort: 22
+        IpProtocol: tcp
+        SourceSecurityGroupId:
+          Ref: PublicSSHSecurityGroup
+        FromPort: 22
+      VpcId:
+        Ref: VPCID
+      GroupDescription: Allow private SSH traffic from load balancer.
+      Tags:
+      - Key: Environment
+        Value:
+          Ref: Environment
+      - Key: Name
+        Value:
+          Fn::Sub: "${Environment}-PrivateSSHSecurityGroup"
+      - Key: ServiceProvider
+        Value: Rackspace
+  NFSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      SecurityGroupIngress:
+      - ToPort: 111
+        IpProtocol: tcp
+        CidrIp: 0.0.0.0/0
+        FromPort: 111
+      - ToPort: 111
+        IpProtocol: udp
+        CidrIp: 0.0.0.0/0
+        FromPort: 111
+      - ToPort: 2049
+        IpProtocol: tcp
+        CidrIp: 0.0.0.0/0
+        FromPort: 2049
+      - ToPort: 2049
+        IpProtocol: udp
+        CidrIp: 0.0.0.0/0
+        FromPort: 2049
+      VpcId:
+        Ref: VPCID
+      GroupDescription: Allow NFS traffic.
+      Tags:
+      - Key: Environment
+        Value:
+          Ref: Environment
+      - Key: Name
+        Value:
+          Fn::Sub: "${Environment}-NFSSecurityGroup"
+      - Key: ServiceProvider
+        Value: Rackspace
+  MSSQLSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      SecurityGroupIngress:
+      - ToPort: 1433
+        IpProtocol: tcp
+        CidrIp: 0.0.0.0/0
+        FromPort: 1433
+      VpcId:
+        Ref: VPCID
+      GroupDescription: Allow MSSQL traffic.
+      Tags:
+      - Key: Environment
+        Value:
+          Ref: Environment
+      - Key: Name
+        Value:
+          Fn::Sub: "${Environment}-MSSQLSecurityGroup"
+      - Key: ServiceProvider
+        Value: Rackspace
+  MySQLSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      SecurityGroupIngress:
+      - ToPort: 3306
+        IpProtocol: tcp
+        CidrIp: 0.0.0.0/0
+        FromPort: 3306
+      VpcId:
+        Ref: VPCID
+      GroupDescription: Allow MySQL traffic.
+      Tags:
+      - Key: Environment
+        Value:
+          Ref: Environment
+      - Key: Name
+        Value:
+          Fn::Sub: "${Environment}-MySQLSecurityGroup"
+      - Key: ServiceProvider
+        Value: Rackspace
+  PrivateECSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      SecurityGroupIngress:
+      - ToPort: 61000
+        IpProtocol: tcp
+        SourceSecurityGroupId:
+          Ref: PublicWebSecurityGroup
+        FromPort: 32768
+      VpcId:
+        Ref: VPCID
+      GroupDescription: Allow public WEB traffic to ephemeral ports on ECS cluster.
+      Tags:
+      - Key: Environment
+        Value:
+          Ref: Environment
+      - Key: Name
+        Value:
+          Fn::Sub: "${Environment}-PrivateECSSecurityGroup"
+      - Key: ServiceProvider
+        Value: Rackspace
+  EFSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      SecurityGroupIngress:
+      - ToPort: 2049
+        IpProtocol: tcp
+        CidrIp: 0.0.0.0/0
+        FromPort: 2049
+      VpcId:
+        Ref: VPCID
+      GroupDescription: Allow EFS traffic.
+      Tags:
+      - Key: Environment
+        Value:
+          Ref: Environment
+      - Key: Name
+        Value:
+          Fn::Sub: "${Environment}-EFSSecurityGroup"
+      - Key: ServiceProvider
+        Value: Rackspace
+  OracleSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      SecurityGroupIngress:
+      - ToPort: 1521
+        IpProtocol: tcp
+        CidrIp: 0.0.0.0/0
+        FromPort: 1521
+      VpcId:
+        Ref: VPCID
+      GroupDescription: Allow Oracle DB traffic.
+      Tags:
+      - Key: Environment
+        Value:
+          Ref: Environment
+      - Key: Name
+        Value:
+          Fn::Sub: "${Environment}-OracleSecurityGroup"
+      - Key: ServiceProvider
+        Value: Rackspace
+  PublicWebSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      SecurityGroupIngress:
+      - ToPort: 80
+        IpProtocol: tcp
+        CidrIp: 0.0.0.0/0
+        FromPort: 80
+      - ToPort: 443
+        IpProtocol: tcp
+        CidrIp: 0.0.0.0/0
+        FromPort: 443
+      VpcId:
+        Ref: VPCID
+      GroupDescription: Allow public WEB traffic to the load balancer.
+      Tags:
+      - Key: Environment
+        Value:
+          Ref: Environment
+      - Key: Name
+        Value:
+          Fn::Sub: "${Environment}-PublicWebSecurityGroup"
+      - Key: ServiceProvider
+        Value: Rackspace
+  PrivateWebSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      SecurityGroupIngress:
+      - ToPort: 80
+        IpProtocol: tcp
+        SourceSecurityGroupId:
+          Ref: PublicWebSecurityGroup
+        FromPort: 80
+      - ToPort: 443
+        IpProtocol: tcp
+        SourceSecurityGroupId:
+          Ref: PublicWebSecurityGroup
+        FromPort: 443
+      VpcId:
+        Ref: VPCID
+      GroupDescription: Allow private WEB traffic from load balancer.
+      Tags:
+      - Key: Environment
+        Value:
+          Ref: Environment
+      - Key: Name
+        Value:
+          Fn::Sub: "${Environment}-PrivateWebSecurityGroup"
+      - Key: ServiceProvider
+        Value: Rackspace
+  ElasticCacheMemcacheSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      SecurityGroupIngress:
+      - ToPort: 11211
+        IpProtocol: tcp
+        CidrIp: 0.0.0.0/0
+        FromPort: 11211
+      VpcId:
+        Ref: VPCID
+      GroupDescription: Allow ElasticCache Memcache traffic.
+      Tags:
+      - Key: Environment
+        Value:
+          Ref: Environment
+      - Key: Name
+        Value:
+          Fn::Sub: "${Environment}-ElasticCacheMemcacheSecurityGroup"
+      - Key: ServiceProvider
+        Value: Rackspace
+  RedshiftSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      SecurityGroupIngress:
+      - ToPort: 5439
+        IpProtocol: tcp
+        CidrIp: 0.0.0.0/0
+        FromPort: 5439
+      VpcId:
+        Ref: VPCID
+      GroupDescription: Allow Redshift traffic.
+      Tags:
+      - Key: Environment
+        Value:
+          Ref: Environment
+      - Key: Name
+        Value:
+          Fn::Sub: "${Environment}-RedshiftSecurityGroup"
+      - Key: ServiceProvider
+        Value: Rackspace
+  ElasticCacheRedisSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      SecurityGroupIngress:
+      - ToPort: 6379
+        IpProtocol: tcp
+        CidrIp: 0.0.0.0/0
+        FromPort: 6379
+      VpcId:
+        Ref: VPCID
+      GroupDescription: Allow ElasticCache Redis traffic.
+      Tags:
+      - Key: Environment
+        Value:
+          Ref: Environment
+      - Key: Name
+        Value:
+          Fn::Sub: "${Environment}-ElasticCacheRedisSecurityGroup"
+      - Key: ServiceProvider
+        Value: Rackspace
+  PostgresSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      SecurityGroupIngress:
+      - ToPort: 5432
+        IpProtocol: tcp
+        CidrIp: 0.0.0.0/0
+        FromPort: 5432
+      VpcId:
+        Ref: VPCID
+      GroupDescription: Allow Postgres traffic.
+      Tags:
+      - Key: Environment
+        Value:
+          Ref: Environment
+      - Key: Name
+        Value:
+          Fn::Sub: "${Environment}-PostgresSecurityGroup"
+      - Key: ServiceProvider
+        Value: Rackspace
+  PrivateRDPSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      SecurityGroupIngress:
+      - ToPort: 3389
+        IpProtocol: tcp
+        SourceSecurityGroupId:
+          Ref: PublicRDPSecurityGroup
+        FromPort: 3389
+      VpcId:
+        Ref: VPCID
+      GroupDescription: Allow private RDP traffic from load balancer.
+      Tags:
+      - Key: Environment
+        Value:
+          Ref: Environment
+      - Key: Name
+        Value:
+          Fn::Sub: "${Environment}-PrivateRDPSecurityGroup"
+      - Key: ServiceProvider
+        Value: Rackspace
+Outputs:
+  PublicRDPSecurityGroup:
+    Value:
+      Fn::GetAtt:
+      - PublicRDPSecurityGroup
+      - GroupId
+  ElasticCacheMemcacheSecurityGroup:
+    Value:
+      Fn::GetAtt:
+      - ElasticCacheMemcacheSecurityGroup
+      - GroupId
+  PublicSSHSecurityGroup:
+    Value:
+      Fn::GetAtt:
+      - PublicSSHSecurityGroup
+      - GroupId
+  PrivateWebSecurityGroup:
+    Value:
+      Fn::GetAtt:
+      - PrivateWebSecurityGroup
+      - GroupId
+  NFSSecurityGroup:
+    Value:
+      Fn::GetAtt:
+      - NFSSecurityGroup
+      - GroupId
+  MSSQLSecurityGroup:
+    Value:
+      Fn::GetAtt:
+      - MSSQLSecurityGroup
+      - GroupId
+  MySQLSecurityGroup:
+    Value:
+      Fn::GetAtt:
+      - MySQLSecurityGroup
+      - GroupId
+  PrivateECSSecurityGroup:
+    Value:
+      Fn::GetAtt:
+      - PrivateECSSecurityGroup
+      - GroupId
+  EFSSecurityGroup:
+    Value:
+      Fn::GetAtt:
+      - EFSSecurityGroup
+      - GroupId
+  PublicWebSecurityGroup:
+    Value:
+      Fn::GetAtt:
+      - PublicWebSecurityGroup
+      - GroupId
+  OracleSecurityGroup:
+    Value:
+      Fn::GetAtt:
+      - OracleSecurityGroup
+      - GroupId
+  RedshiftSecurityGroup:
+    Value:
+      Fn::GetAtt:
+      - RedshiftSecurityGroup
+      - GroupId
+  PrivateSSHSecurityGroup:
+    Value:
+      Fn::GetAtt:
+      - PrivateSSHSecurityGroup
+      - GroupId
+  ElasticCacheRedisSecurityGroup:
+    Value:
+      Fn::GetAtt:
+      - ElasticCacheRedisSecurityGroup
+      - GroupId
+  PostgresSecurityGroup:
+    Value:
+      Fn::GetAtt:
+      - PostgresSecurityGroup
+      - GroupId
+  PrivateRDPSecurityGroup:
+    Value:
+      Fn::GetAtt:
+      - PrivateRDPSecurityGroup
+      - GroupId

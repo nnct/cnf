@@ -1,0 +1,23 @@
+#cloud-config
+cloud_final_modules:
+- [users-groups,always]
+users:
+  - name: yamin.niu
+    groups: [ wheel ]
+    sudo: [ "ALL=(ALL) NOPASSWD:ALL" ]
+    shell: /bin/bash
+    ssh-authorized-keys: 
+    - ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDGEdguc7tMAMtOab9h5vOnGaOIghHJ0/tYZynib8mfVysQtCN3IxTz7fD6oA5Qn/TLGg9t4oj/6J2h518GJuba9FTjAxLk47o3Zm2kyl9Te/I9X+B0i8b3X96zthS2RDLwd4TMTeeVmxcnNu7tv7EcacacH30qt9brCnXx/qIVp/krdhcEl+PlJUhFlgFuNcyGQMfr6qTAyRWnlCpFoW1JNiX6gJqhMfge6lrqt3hY8pIPzRw9YxujIpowwsnrsy4c8TSrIgJrXL6uIpY+R9Jjs47iRMJaW5XAtY3JgOMM//kDqmhe/UolAnXmD1viQUz+Q0fBXxvaNdatP7AIk17B 
+
+	*** Ubuntu ***
+	
+#cloud-config
+cloud_final_modules:
+- [users-groups,always]
+users:
+  - name: yamin.niu
+    groups: [ sudo ]
+    sudo: [ "ALL=(ALL) NOPASSWD:ALL" ]
+    shell: /bin/bash
+    ssh-authorized-keys: 
+    - ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDGEdguc7tMAMtOab9h5vOnGaOIghHJ0/tYZynib8mfVysQtCN3IxTz7fD6oA5Qn/TLGg9t4oj/6J2h518GJuba9FTjAxLk47o3Zm2kyl9Te/I9X+B0i8b3X96zthS2RDLwd4TMTeeVmxcnNu7tv7EcacacH30qt9brCnXx/qIVp/krdhcEl+PlJUhFlgFuNcyGQMfr6qTAyRWnlCpFoW1JNiX6gJqhMfge6lrqt3hY8pIPzRw9YxujIpowwsnrsy4c8TSrIgJrXL6uIpY+R9Jjs47iRMJaW5XAtY3JgOMM//kDqmhe/UolAnXmD1viQUz+Q0fBXxvaNdatP7AIk17B 

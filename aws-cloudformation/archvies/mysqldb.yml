@@ -1,0 +1,180 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description:
+  This template deploys a database with multi-AZs.
+
+Parameters:
+
+    KeyName:
+        Description: The existing EC2 KeyPair for SSH access to the EC2 instance running container with TeamCity server and agents
+        Type: AWS::EC2::KeyPair::KeyName
+        AllowedPattern: ".+"
+
+    ImportValuefromStack:
+        Description: The name of the VPC  stack that exports the values
+        Type: String
+        
+    EnvironmentType:
+        Description: whether database support in Dev/test or production 
+        Type: String
+        Default: Dev
+        AllowedValues:
+          - Dev
+          - Production
+        ConstraintDescription: 'must specify prod or dev/test.'  
+        
+    DBInstanceType:
+        Description: The instance type for the RDS instance for TeamCity Database
+        Type: String
+        Default: db.t2.medium
+        AllowedValues:
+            - db.t2.medium
+            - db.m4.large
+            - db.m4.xlarge
+            - db.m4.2xlarge
+            - db.m4.4xlarge
+            - db.m4.10xlarge
+            - db.m3.medium
+            - db.m3.large
+            - db.m3.xlarge
+            - db.m3.2xlarge
+            - db.r3.large
+            - db.r3.xlarge
+            - db.r3.2xlarge
+            - db.r3.4xlarge
+            - db.r3.8xlarge
+            
+    DBName:
+        Description: Provide the name for the TeamCity RDS Database 
+        Type: String
+        AllowedPattern: ".+"
+        MinLength: 2
+    DBUsername:
+        Description: Provide the user name for the TeamCity RDS Database 
+        Type: String
+        AllowedPattern: ".+"
+        MinLength: 2
+     
+    DBPassword:
+        Description: Provide the password for the TeamCity RDS Database (min 8, maximum 41 characters)
+        Type: String
+        AllowedPattern: ".+"
+        MinLength: 8
+        NoEcho: true
+    DBMultiAZ:
+        Description: whether database support multiple AZ
+        Type: String
+        Default: False 
+        AllowedValues:
+          - true
+          - false
+    DBEngineType:
+        Description: Select the TeamCity RDS Database Engine , default is Mysql 
+        Type: String
+        Default: 'MySQL'
+        
+    DBEngineVersion:
+        Description: Select the TeamCity RDS Database Engine version , default is 8.0
+        Type: String
+        Default: '5.7.23'    
+    DBFamily:
+        Description: Select the TeamCity RDS Database Engine version , default is 8.0
+        Type: String
+        Default: 'MySQL5.7'
+    DBStorageType:
+        Description: database storage type 
+        Type: String
+        Default: gp2 
+        AllowedValues:
+          - standard
+          - gp2
+          - io1
+Metadata:
+
+  AWS::CloudFormation::Interface: 
+  
+    ParameterGroups: 
+      - 
+        Label:
+          default: " "
+        Parameters:
+          - KeyName
+          - ImportValuefromStack
+          - EnvironmentType
+      - 
+        Label: 
+          default: "Database Configuration"
+        Parameters: 
+          - DBName
+          - DBInstanceType
+          - DBEngineType
+          - DBEngineVersion
+          - DBMultiAZ
+          - DBUsername
+          - DBPassword
+      - Label:
+          default: "DBParameter Group"
+        Parameters: 
+          - DBFamily
+          - DBStorageType
+Conditions:
+
+  IsDatabaseforProduction: !Equals [!Ref EnvironmentType, 'Production']
+        
+Resources:
+
+  RDSDB:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      AllocatedStorage: !If [IsDatabaseforProduction, '100', '5']
+      DBInstanceClass: !Ref 'DBInstanceType'
+      DBInstanceIdentifier: !Sub ${AWS::StackName}
+      DBName: !Ref 'DBName'
+      DBSubnetGroupName: !Ref RDSSubnetGroup
+      VPCSecurityGroups:
+        - Fn::ImportValue: 
+           !Sub '${ImportValuefromStack}-privateaccessSG'
+      Engine: !Ref DBEngineType
+      EngineVersion: !Ref 'DBEngineVersion'
+      MasterUsername: !Ref 'DBUsername'
+      MasterUserPassword: !Ref 'DBPassword'
+      DBParameterGroupName: !Ref 'MysqlDBParamGroup'
+      PubliclyAccessible: false
+      MultiAZ: !If [IsDatabaseforProduction, 'true', 'false']      
+      StorageType: !Ref DBStorageType     
+    DeletionPolicy: Snapshot
+
+  MysqlDBParamGroup:
+    Type: AWS::RDS::DBParameterGroup
+    Properties:
+      Family: !Ref DBFamily
+      Description: !Sub ${AWS::StackName} DB
+      Parameters:
+        long_query_time: "5"
+        slow_query_log: "1"
+        innodb_flush_log_at_trx_commit: "2"
+        character_set_server: "utf8"
+        collation_server: "utf8_bin"
+        max_allowed_packet: "16777216"
+
+  RDSSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: !Sub TeamCity ${AWS::StackName} 
+      SubnetIds:
+        - Fn::ImportValue: 
+           !Sub '${ImportValuefromStack}-privatesubnet1'
+        - Fn::ImportValue: 
+           !Sub '${ImportValuefromStack}-privatesubnet2'  
+Outputs:
+    InstanceId:
+        Description: InstanceId of the newly created RDS Instance
+        Value: !Ref RDSDB
+        Export:
+          Name: !Sub ${AWS::StackName}-instance
+          
+    JDBCConnectionString:
+        Description: JDBC connection string for the database
+        Value: !Join ["", ["jdbc:mysql://" , !GetAtt [RDSDB, Endpoint.Address], ":" , !GetAtt [RDSDB, Endpoint.Port ], "/"]]
+        Export:
+          Name: !Sub ${AWS::StackName}-jdbc

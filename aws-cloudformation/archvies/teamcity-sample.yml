@@ -1,0 +1,714 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: >
+  ! WARNING ! THIS TEMPLATE CREATES RESOURCES THAT CAN COST YOU MONEY. You will be billed for the AWS resources used if you create a stack from this template.
+  This template will create and setup teamcity server and agents with basic configuration.
+  It will create:
+    - A VPC with 2 public subnets
+    - Security groups with access rules
+    - An EC2 instance with teamcity server
+    - An AutoScalingGroup with Launch Configuration that installs teamcity agent on every provisioned instance
+Mappings:
+  AWSAMIRegionMap:
+    AMI:
+      "AmazonLinux64": amzn-ami-hvm-2017.03.1.20170812-x86_64-gp2
+    us-east-1:
+      "AmazonLinux64": ami-4fffc834
+    us-east-2:
+      "AmazonLinux64": ami-ea87a78f
+    us-west-1:
+      "AmazonLinux64": ami-3a674d5a
+    us-west-2:
+      "AmazonLinux64": ami-aa5ebdd2
+    ca-central-1:
+      "AmazonLinux64": ami-5ac17f3e
+    eu-west-1:
+      "AmazonLinux64": ami-ebd02392
+    eu-central-1:
+      "AmazonLinux64": ami-657bd20a
+    eu-west-2:
+      "AmazonLinux64": ami-489f8e2c
+    ap-northeast-1:
+      "AmazonLinux64": ami-4af5022c
+    ap-northeast-2:
+      "AmazonLinux64": ami-8663bae8
+    ap-southeast-1:
+      "AmazonLinux64": ami-fdb8229e
+    ap-southeast-2:
+      "AmazonLinux64": ami-30041c53
+    ap-south-1:
+      "AmazonLinux64": ami-d7abd1b8
+    sa-east-1:
+      "AmazonLinux64": ami-d27203be
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "TeamCity configuration"
+        Parameters:
+          - TCServerPort
+          - NumOfAgents
+      - Label:
+          default: "Database Options"
+        Parameters:
+          - DBEngine
+          - DBRootPassword
+          - DBName
+          - DBUsername
+          - DBPassword
+      - Label:
+          default: "General options"
+        Parameters:
+          - VpcCidr
+          - Subnet1Cidr
+          - Subnet2Cidr
+          - InstanceTypeServer
+          - InstanceTypeAgent
+          - ServerRootVolumeSize
+          - ServerBuildServerVolumeSize
+          - AgentRootVolumeSize
+          - KeyName
+          - SSHAccessCidr
+    ParameterLabels:
+      NumOfAgents:
+        default: "Number of initial agent instances"
+      TCServerPort:
+        default: "TeamCity server port"
+      VpcCidr:
+        default: "VPC CIDR block"
+      Subnet1Cidr:
+        default: "Subnet 1 CIDR block"
+      Subnet2Cidr:
+        default: "Subnet 2 CIDR block"
+      InstanceTypeServer:
+        default: "Instance type for server"
+      InstanceTypeAgent:
+        default: "Instance type for agents"
+      KeyName:
+        default: "SSH access key"
+      SSHAccessCidr:
+        default: "Address range that can be used to SSH to the EC2 instances "
+      DBEngine:
+        default: "Database Engine"
+      DBRootPassword:
+        default: "Root password for MySQL"
+      DBName:
+        default: "Database name"
+      DBUsername:
+        default: "User name for database access"
+      DBPassword:
+        default: "Password for database access"
+      ServerRootVolumeSize:
+        default: "Size of server root volume"
+      ServerBuildServerVolumeSize:
+        default: "Size of server build/configuration volume"
+      AgentRootVolumeSize:
+        default: "Size of agent root volume"
+Parameters:
+  DBEngine:
+    Type: String
+    AllowedValues:
+      - PostgreSQL
+      - MySQL
+    Default: MySQL
+  DBRootPassword:
+    NoEcho: true
+    Type: String
+    AllowedPattern: "[a-zA-Z0-9]*"
+    MinLength: 8
+    MaxLength: 32
+    ConstraintDescription: "Must contain only alphanumeric characters"
+  DBName:
+    Type: String
+    AllowedPattern: "[a-zA-Z][a-zA-Z0-9]*"
+    MinLength: 1
+    MaxLength: 64
+    Default: "teamcity"
+    ConstraintDescription: "Must begin with a letter and contain only alphanumeric characters"
+  DBUsername:
+    NoEcho: true
+    Type: String
+    AllowedPattern: "[a-zA-Z][a-zA-Z0-9]*"
+    MinLength: 1
+    MaxLength: 16
+    ConstraintDescription: "Must begin with a letter and contain only alphanumeric characters"
+  DBPassword:
+    NoEcho: true
+    Type: String
+    AllowedPattern: "[a-zA-Z0-9]*"
+    MinLength: 8
+    MaxLength: 32
+    ConstraintDescription: "Must contain only alphanumeric characters"
+  NumOfAgents:
+    Type: Number
+    Default: 0
+    MinValue: 0
+    MaxValue: 3
+  TCServerPort:
+    Type: Number
+    Default: 8111
+  VpcCidr:
+    Type: String
+    Default: 10.20.0.0/16
+    AllowedPattern : "(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})/(\\d{1,2})"
+  Subnet1Cidr:
+    Type: String
+    Default: 10.20.0.0/24
+    AllowedPattern : "(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})/(\\d{1,2})"
+  Subnet2Cidr:
+    Type: String
+    Default: 10.20.1.0/24
+    AllowedPattern : "(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})/(\\d{1,2})"
+  SSHAccessCidr:
+    Type: String
+    Default: 0.0.0.0/0
+    AllowedPattern : "(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})/(\\d{1,2})"
+  InstanceTypeServer:
+    Type: String
+    Default: t2.medium
+    AllowedValues:
+      - t2.medium
+      - t2.large
+      - t2.xlarge
+  InstanceTypeAgent:
+    Type: String
+    Default: t2.medium
+    AllowedValues:
+      - t2.medium
+      - t2.large
+      - t2.xlarge
+  ServerRootVolumeSize:
+    Type: Number
+    Default: 20
+  ServerBuildServerVolumeSize:
+    Type: Number
+    Default: 20
+  AgentRootVolumeSize:
+    Type: Number
+    Default: 20
+  KeyName:
+    Type: AWS::EC2::KeyPair::KeyName
+Resources:
+  TeamCityVpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCidr
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+      - Key: Name
+        Value: TCVPC
+  TeamCitySubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref TeamCityVpc
+      CidrBlock: !Ref Subnet1Cidr
+      MapPublicIpOnLaunch: true
+      AvailabilityZone: !Select
+        - 0
+        - !GetAZs ''
+      Tags:
+      - Key: Name
+        Value: TCSUBNET1
+  TeamCitySubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref TeamCityVpc
+      CidrBlock: !Ref Subnet2Cidr
+      MapPublicIpOnLaunch: true
+      AvailabilityZone: !Select
+        - 1
+        - !GetAZs ''
+      Tags:
+      - Key: Name
+        Value: TCSUBNET2
+  TeamCityInternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+      - Key: Name
+        Value: TCIG
+  TeamCityGatewayToInternet:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref TeamCityVpc
+      InternetGatewayId: !Ref TeamCityInternetGateway
+  TeamCityPublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref TeamCityVpc
+      Tags:
+      - Key: Name
+        Value: TCRT
+  TeamCityPublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: TeamCityGatewayToInternet
+    Properties:
+      RouteTableId: !Ref TeamCityPublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref TeamCityInternetGateway
+  TeamCityPublicSubnetRouteTableAssociation1:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref TeamCitySubnet1
+      RouteTableId: !Ref TeamCityPublicRouteTable
+  TeamCityPublicSubnetRouteTableAssociation2:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref TeamCitySubnet2
+      RouteTableId: !Ref TeamCityPublicRouteTable
+  TeamCityServerSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow ssh to client host
+      VpcId: !Ref TeamCityVpc
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: 22
+        ToPort: 22
+        CidrIp: !Ref SSHAccessCidr
+      - IpProtocol: tcp
+        FromPort: !Ref TCServerPort
+        ToPort: !Ref TCServerPort
+        CidrIp: 0.0.0.0/0
+      Tags:
+      - Key: Name
+        Value: TCSGSERVER
+  TeamCityAgentSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow ssh to client host
+      VpcId: !Ref TeamCityVpc
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: 22
+        ToPort: 22
+        CidrIp: !Ref SSHAccessCidr
+      - IpProtocol: tcp
+        FromPort: !Ref TCServerPort
+        ToPort: !Ref TCServerPort
+        CidrIp: !Ref VpcCidr
+      Tags:
+      - Key: Name
+        Value: TCSGAGENT
+  TeamCityServer:
+    Type: AWS::EC2::Instance
+    DependsOn: TeamCityInternetGateway
+    CreationPolicy:
+      ResourceSignal:
+        Timeout: PT15M
+        Count: 1
+    Metadata:
+      AWS::CloudFormation::Init:
+        configSets:
+          MySQL:
+            - cfn-init
+            - volumes
+            - mysql-install
+            - mysql-configure
+            - java
+            - download-connectors
+            - download-tc
+            - configure-tc
+            - configure-tc-db-mysql
+            - start-tc
+          PostgreSQL:
+            - cfn-init
+            - volumes
+            - postgresql-install
+            - postgresql-configure
+            - java
+            - download-connectors
+            - download-tc
+            - configure-tc
+            - configure-tc-db-postgresql
+            - start-tc
+        cfn-init:
+          files:
+            /etc/cfn/cfn-hup.conf:
+              content: !Sub |
+                [main]
+                stack=${AWS::StackName}
+                region=${AWS::Region}
+              mode: 000400
+              owner: root
+              group: root
+            /etc/cfn/hooks.d/cfn-auto-reloader.conf:
+              content: !Sub |
+                [cfn-auto-reloader-hook]
+                triggers=post.update
+                path=Resources.TeamCityServer.Metadata.AWS::CloudFormation::Init
+                action=/opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --resource TeamCityServer --configsets ${DBEngine} --region ${AWS::Region}
+                runas=root
+              mode: 000400
+              owner: root
+              group: root
+          services:
+            sysvinit:
+              cfn-hup:
+                enabled: true
+                ensureRunning: true
+                files:
+                  - /etc/cfn/cfn-hup.conf
+                  - /etc/cfn/hooks.d/cfn-auto-reloader.conf
+        volumes:
+          commands:
+            a_pvcreate:
+              command: pvcreate /dev/xvdf
+            b_vgcreate:
+              command: vgcreate vg0 /dev/xvdf
+            c_lvcreate:
+              command: lvcreate -l 100%FREE -n buildserver vg0
+            d_mkfs:
+              command: mkfs.ext4 /dev/vg0/buildserver
+            e_mkdir:
+              command: mkdir /var/buildserver
+            f_fstab:
+              command: echo "/dev/mapper/vg0-buildserver /var/buildserver ext4 defaults 0 2" >> /etc/fstab
+            g_mount:
+              command: mount -a
+        mysql-install:
+          packages:
+            yum:
+              mysql: []
+              mysql-server: []
+          files:
+            /tmp/setup.mysql:
+              content: !Sub |
+                CREATE DATABASE ${DBName};
+                GRANT ALL ON ${DBName}.* TO ${DBUsername}@localhost IDENTIFIED BY '${DBPassword}';
+              mode: 000400
+              owner: root
+              group: root
+          services:
+            sysvinit:
+              mysqld:
+                enabled: true
+                ensureRunning: true
+        mysql-configure:
+          commands:
+            a-root-password:
+              command: !Join
+                - ""
+                - - 'mysqladmin -u root password '
+                  - !Ref DBRootPassword
+            b-create-database:
+              command: !Join
+                - ""
+                - - 'mysql -u root --password='
+                  - !Ref DBRootPassword
+                  - ' < /tmp/setup.mysql'
+            c-configure:
+              command: sed -i '/\[mysqld\]/a innodb_flush_log_at_trx_commit=2' /etc/my.cnf
+            d-reboot-mysql:
+              command: service mysqld restart
+        postgresql-install:
+          packages:
+            rpm:
+              pgdg: https://download.postgresql.org/pub/repos/yum/9.6/redhat/rhel-6-x86_64/pgdg-ami201503-96-9.6-2.noarch.rpm
+            yum:
+              postgresql96: []
+              postgresql96-server: []
+              postgresql96-devel: []
+              postgresql96-contrib: []
+          commands:
+            a-initdb:
+              command: service postgresql-9.6 initdb
+          services:
+            sysvinit:
+              postgresql-9.6:
+                enabled: true
+                ensureRunning: true
+        postgresql-configure:
+          commands:
+            a-create-user:
+              command: !Join
+                - ""
+                - - "sudo -u postgres psql -c \"create user "
+                  - !Ref DBUsername
+                  - " with createdb encrypted password '"
+                  - !Ref DBPassword
+                  - "';\""
+            b-create-database:
+              command: !Join
+                - ""
+                - - "sudo -u postgres psql -c \"create database "
+                  - !Ref DBName
+                  - " with owner "
+                  - !Ref DBUsername
+                  - ";\""
+            c-create-schema:
+              command: !Join
+                - ""
+                - - "sudo -u postgres psql -c \"create schema "
+                  - !Ref DBUsername
+                  - " authorization "
+                  - !Ref DBUsername
+                  - ";\""
+            d-synchronous-commit:
+              command: echo "synchronous_commit = off" >> /var/lib/pgsql/9.6/data/postgresql.conf
+            e-pg-hba:
+              command: echo "local   all             all                                     peer" > /var/lib/pgsql/9.6/data/pg_hba.conf
+            f-pg-hba:
+              command: echo "host    all             all             127.0.0.1/32            md5" >> /var/lib/pgsql/9.6/data/pg_hba.conf
+            g-pg-hba:
+              command: echo "host    all             all             ::1/128                 md5" >> /var/lib/pgsql/9.6/data/pg_hba.conf
+            h-restart-postgresql:
+              command: service postgresql-9.6 restart
+        java:
+          packages:
+            yum:
+              java-1.8.0-openjdk: []
+          commands:
+            a-remove-java7:
+              command: sudo yum remove -y java-1.7.0-openjdk
+        download-connectors:
+          files:
+            /tmp/mysql-connector-java-5.1.43.tar.gz:
+              source: https://dev.mysql.com/get/Downloads/Connector-J/mysql-connector-java-5.1.43.tar.gz
+            /temp/postgresql-42.1.4.jar:
+              source: https://jdbc.postgresql.org/download/postgresql-42.1.4.jar
+          commands:
+            a-unpack-conn:
+              command: cd /tmp && tar xfz /tmp/mysql-connector-java-5.1.43.tar.gz
+        download-tc:
+          files:
+            /tmp/TeamCity-2017.1.3.tar.gz:
+              source: https://download.jetbrains.com/teamcity/TeamCity-2017.1.3.tar.gz
+          commands:
+            a-unpack-tc:
+              command: cd /tmp && tar xfz /tmp/TeamCity-2017.1.3.tar.gz
+            b-move-tc:
+              command: mv /tmp/TeamCity /opt
+            c-remove-tmp:
+              command: rm -rf /tmp/TeamCity-2017.1.3.tar.gz
+        configure-tc:
+          files:
+            /opt/TeamCity/conf/teamcity-startup.properties:
+              content: !Sub |
+                teamcity.data.path=/var/buildserver
+              mode: 000644
+              owner: root
+              group: root
+          commands:
+            a-create-connector-dir:
+              command: mkdir /var/buildserver/lib
+            b-create-connector-dir2:
+              command: mkdir /var/buildserver/lib/jdbc
+            c-copy-connector-mysql:
+              command: cp /tmp/mysql-connector-java-5.1.43/mysql-connector-java-5.1.43-bin.jar /var/buildserver/lib/jdbc
+            d-copy-connector-postgresql:
+              command: cp /temp/postgresql-42.1.4.jar /var/buildserver/lib/jdbc
+            e-change-port:
+              command: !Join
+                - ""
+                - - 'sed -i "s/8111/'
+                  - !Ref TCServerPort
+                  - '/g" /opt/TeamCity/conf/server.xml'
+        configure-tc-db-mysql:
+          files:
+            /var/buildserver/config/database.properties:
+              content: !Sub |
+                connectionUrl=jdbc:mysql://localhost:3306/${DBName}
+                connectionProperties.user=${DBUsername}
+                connectionProperties.password=${DBPassword}
+              mode: 000644
+              owner: root
+              group: root
+        configure-tc-db-postgresql:
+          files:
+            /var/buildserver/config/database.properties:
+              content: !Sub |
+                connectionUrl=jdbc:postgresql://localhost:5432/${DBName}
+                connectionProperties.user=${DBUsername}
+                connectionProperties.password=${DBPassword}
+              mode: 000644
+              owner: root
+              group: root
+        start-tc:
+          commands:
+            a-set-env:
+              command: export TEAMCITY_SERVER_MEM_OPTS="-Xmx1024m"
+            b-start-tc:
+              command: /opt/TeamCity/bin/teamcity-server.sh start
+            c-rclocal:
+              command: echo "export TEAMCITY_SERVER_MEM_OPTS=\"-Xmx1024m\"" >> rc.local
+            d-rclocal:
+              command: echo "/opt/TeamCity/bin/teamcity-server.sh start" >> rc.local
+    Properties:
+      KeyName: !Ref KeyName
+      ImageId: !FindInMap [AWSAMIRegionMap, !Ref "AWS::Region", AmazonLinux64]
+      InstanceType: !Ref InstanceTypeServer
+      NetworkInterfaces:
+        - DeviceIndex: 0
+          GroupSet:
+            - !Ref TeamCityServerSG
+          SubnetId: !Ref TeamCitySubnet1
+      BlockDeviceMappings:
+      - DeviceName: /dev/xvda
+        Ebs:
+          VolumeSize: !Ref ServerRootVolumeSize
+          VolumeType: gp2
+          DeleteOnTermination: true
+      - DeviceName: /dev/xvdf
+        Ebs:
+          VolumeSize: !Ref ServerBuildServerVolumeSize
+          VolumeType: gp2
+          DeleteOnTermination: true
+      Tags:
+      - Key: Name
+        Value: TCEC2SERVER
+      UserData:
+        Fn::Base64:
+          !Sub |
+            #!/bin/bash
+            yum-config-manager --enable epel
+            yum update -y aws-cfn-bootstrap
+            # Helper function
+            function error_exit
+            {
+              /opt/aws/bin/cfn-signal -e 1 -r "$1" TeamCityServer
+              exit 1
+            }
+            # Install application
+            /opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --resource TeamCityServer --configsets ${DBEngine} --region ${AWS::Region} || error_exit 'Failed to run cfn-init'
+            # All is well so signal success
+            /opt/aws/bin/cfn-signal -e 0 --stack ${AWS::StackName} --resource TeamCityServer --region ${AWS::Region}
+  TeamCityAsgClients:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    CreationPolicy:
+      ResourceSignal:
+        Timeout: PT15M
+        Count: !Ref NumOfAgents
+    DependsOn: TeamCityServer
+    Properties:
+      LaunchConfigurationName: !Ref TeamCityAsgClientsLaunchConfiguration
+      VPCZoneIdentifier:
+        - !Ref TeamCitySubnet1
+        - !Ref TeamCitySubnet2
+      MinSize: 0
+      MaxSize: 3
+      DesiredCapacity: !Ref NumOfAgents
+      Tags:
+      - Key: Name
+        Value: TCEC2AGENT
+        PropagateAtLaunch: true
+  TeamCityAsgClientsLaunchConfiguration:
+    Type: AWS::AutoScaling::LaunchConfiguration
+    Metadata:
+      AWS::CloudFormation::Init:
+        configSets:
+          config:
+            - cfn-init
+            - java
+            - download-tc
+            - configure-tc
+            - start-tc
+        cfn-init:
+          files:
+            /etc/cfn/cfn-hup.conf:
+              content: !Sub |
+                [main]
+                stack=${AWS::StackName}
+                region=${AWS::Region}
+              mode: 000400
+              owner: root
+              group: root
+            /etc/cfn/hooks.d/cfn-auto-reloader.conf:
+              content: !Sub |
+                [cfn-auto-reloader-hook]
+                triggers=post.update
+                path=Resources.TeamCityAsgClientsLaunchConfiguration.Metadata.AWS::CloudFormation::Init
+                action=/opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --resource TeamCityAsgClientsLaunchConfiguration --configsets config --region ${AWS::Region}
+                runas=root
+              mode: 000400
+              owner: root
+              group: root
+          services:
+            sysvinit:
+              cfn-hup:
+                enabled: true
+                ensureRunning: true
+                files:
+                  - /etc/cfn/cfn-hup.conf
+                  - /etc/cfn/hooks.d/cfn-auto-reloader.conf
+        java:
+          packages:
+            yum:
+              java-1.8.0-openjdk: []
+          commands:
+            a-remove-java7:
+              command: sudo yum remove -y java-1.7.0-openjdk
+        download-tc:
+          files:
+            /tmp/TeamCity-2017.1.3.tar.gz:
+              source: https://download.jetbrains.com/teamcity/TeamCity-2017.1.3.tar.gz
+          commands:
+            a-unpack-tc:
+              command: cd /tmp && tar xfz /tmp/TeamCity-2017.1.3.tar.gz
+            b-move-tc:
+              command: mv /tmp/TeamCity/buildAgent /opt
+            c-remove-tmp:
+              command: rm -rf /tmp/TeamCity-2017.1.3.tar.gz
+        configure-tc:
+          files:
+            /tmp/setup-agent.sh:
+              content: !Sub |
+                #!/bin/bash
+                instance_id=`curl http://169.254.169.254/latest/meta-data/instance-id`
+                sed -i "s/Default Agent/$instance_id/g" /opt/buildAgent/conf/buildAgent.properties
+              mode: 000500
+              owner: root
+              group: root
+          commands:
+            a-set-server:
+              command: !Join
+                - ""
+                - - 'sed -i "s/localhost:8111/'
+                  - !GetAtt TeamCityServer.PrivateIp
+                  - ':'
+                  - !Ref TCServerPort
+                  - '/g" /opt/buildAgent/conf/buildAgent.properties'
+            b-set-agent-name:
+              command: /tmp/setup-agent.sh
+        start-tc:
+          commands:
+            a-start-tc:
+              command: /opt/buildAgent/bin/agent.sh start
+            b-rclocal:
+              command: echo "/opt/buildAgent/bin/agent.sh start" >> rc.local
+    Properties:
+      KeyName: !Ref KeyName
+      ImageId: !FindInMap [AWSAMIRegionMap, !Ref "AWS::Region", AmazonLinux64]
+      InstanceType: !Ref InstanceTypeAgent
+      BlockDeviceMappings:
+      - DeviceName: /dev/xvda
+        Ebs:
+          VolumeSize: !Ref AgentRootVolumeSize
+          VolumeType: gp2
+          DeleteOnTermination: true
+      SecurityGroups:
+        - !Ref TeamCityAgentSG
+      UserData:
+        Fn::Base64:
+          !Sub |
+            #!/bin/bash
+            yum update -y aws-cfn-bootstrap
+            # Helper function
+            function error_exit
+            {
+              /opt/aws/bin/cfn-signal -e 1 -r "$1" TeamCityAsgClientsLaunchConfiguration
+              exit 1
+            }
+            # Install application
+            /opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --resource TeamCityAsgClientsLaunchConfiguration --configsets config --region ${AWS::Region} || error_exit 'Failed to run cfn-init'
+            # All is well so signal success
+            /opt/aws/bin/cfn-signal -e 0 --stack ${AWS::StackName} --resource TeamCityAsgClients --region ${AWS::Region}
+Outputs:
+  TeamCityServerDNSName:
+    Description: The DNS Name and port of the TeamCity server
+    Value: !Join
+      - ""
+      - - 'http://'
+        - !GetAtt TeamCityServer.PublicDnsName
+        - ':'
+        - !Ref TCServerPort

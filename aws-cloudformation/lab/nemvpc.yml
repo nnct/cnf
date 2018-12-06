@@ -1,0 +1,326 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Create a VPC  
+Metadata:
+  TemplateAuthor: 'Yamin Niu'
+  
+Parameters: 
+  Owner:
+    Description: the owner of the vpc or instance
+    Type: String  
+    Default: 'EOL'
+    
+  Project:
+    Description: Enter Project Name.
+    Type: String
+    Default: Nemsight
+    
+  VPCSubnetCidrBlock:
+    Description: 10.0.0.0/16 = 10.0.0.0-10.0.255.255 = 256 Subnets = 65534 hosts
+    Type: String
+    Default: 192.168.0.0/24
+    MinLength: '10'
+    MaxLength: '18'
+    AllowedPattern: '((\d{1,3})\.){3}\d{1,3}/\d{1,2}'
+
+  iTagOperatingHours:
+    Type: String
+    Description: >-
+      Define Operation_hours to let lambda to stop instances 
+      save runing cost
+    Default: 'business'
+    AllowedValues:
+      - 'business'
+      - 'all_day'
+      - 'fridays'
+      - 'adhoc'
+  iTagStatus:
+    Description: active or inactive  
+    Type: String
+    Default: active
+    AllowedValues:
+      - active
+      - inactive
+  iTagType:
+    Description: create Tag Type 
+    Type: String
+    Default: 'On Demand'
+    AllowedValues:
+      - 'On Demand'
+      - 'RI-N'
+      - 'RI-C'
+  AvailabilityZone1:
+    Type: String
+    Default: a
+    AllowedValues:
+    - a
+    - b
+    - c
+
+  AvailabilityZone2:
+    Type: String
+    Default: b
+    AllowedValues:
+    - a
+    - b
+    - c
+           
+Resources:
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VPCSubnetCidrBlock
+      EnableDnsSupport: 'True'
+      EnableDnsHostnames: 'True'
+      Tags:
+        - Key: Name 
+          Value: !Ref 'AWS::StackName'
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Project
+          Value: !Ref Project
+          
+  publicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+    CIDRRange
+      CidrBlock: !Select [ 0, !Cidr [ !GetAtt VPC.CidrBlock, 4, 5 ]]
+      VpcId: !Ref VPC
+      AvailabilityZone: !Join [ '', [ !Ref 'AWS::Region', !Ref AvailabilityZone1 ] ]
+      Tags:
+        - Key: Name
+          Value: !Join [ '', [ !Ref 'AWS::StackName', '-public-az1' ] ]
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Project
+          Value: !Ref Project
+          
+  publicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      CidrBlock: !Select [ 2, !Cidr [ !GetAtt VPC.CidrBlock, 4, 5 ]]
+      VpcId: !Ref VPC
+      AvailabilityZone: !Join [ '', [ !Ref 'AWS::Region', !Ref AvailabilityZone2 ] ]
+      Tags:
+        - Key: Name
+          Value: !Join [ '', [ !Ref 'AWS::StackName', '-public-az2' ] ]
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Project
+          Value: !Ref Project
+          
+  privateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      CidrBlock: !Select [ 1, !Cidr [ !GetAtt VPC.CidrBlock, 4, 5 ]]
+      VpcId: !Ref VPC
+      AvailabilityZone: !Join [ '', [ !Ref 'AWS::Region', !Ref AvailabilityZone1 ] ]
+      Tags:
+        - Key: Name
+          Value: !Join [ '', [ !Ref 'AWS::StackName', '-private-az1' ] ]
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Project
+          Value: !Ref Project          
+  privateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      CidrBlock: !Select [ 3, !Cidr [ !GetAtt VPC.CidrBlock, 4, 5 ]]
+      VpcId: !Ref VPC
+      AvailabilityZone: !Join [ '', [ !Ref 'AWS::Region', !Ref AvailabilityZone2 ] ]
+      Tags:
+        - Key: Name
+          Value: !Join [ '', [ !Ref 'AWS::StackName', '-private-az2' ] ]
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Project
+          Value: !Ref Project                
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+       - Key: Name
+         Value: !Join [ '', [ !Ref 'AWS::StackName', '-IGW' ] ]
+       - Key: Owner
+         Value: !Ref Owner
+       - Key: Project
+         Value: !Ref Project         
+  GatewayToInternet:
+    Type: AWS::EC2::VPCGatewayAttachment
+    DependsOn:
+    - InternetGateway
+    - VPC
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    DependsOn: VPC
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Join [ '', [ !Ref 'AWS::StackName', '-public' ] ]
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Project
+          Value: !Ref Project        
+  # public subnets associate to public router table.       
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn:
+    - PublicRouteTable
+    - InternetGateway
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway        
+  PublicSubnet1Association:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    DependsOn:
+    - publicSubnet1
+    - PublicRouteTable
+    Properties:
+      SubnetId: !Ref publicSubnet1
+      RouteTableId: !Ref PublicRouteTable
+  PublicSubnet2Association:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    DependsOn:
+    - publicSubnet2
+    - PublicRouteTable
+    - GatewayToInternet
+    Properties:
+      SubnetId: !Ref publicSubnet2
+      RouteTableId: !Ref PublicRouteTable      
+  #private subnets associated to private route table
+  NatGatewayEIP:
+    Type: 'AWS::EC2::EIP'
+    Properties:
+      Domain: vpc
+
+  NatGateway:
+    Type: 'AWS::EC2::NatGateway'
+    DependsOn: NatGatewayEIP
+    Properties:
+      SubnetId: !Ref publicSubnet1
+      AllocationId:
+        Fn::GetAtt:
+          - NatGatewayEIP
+          - AllocationId
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-NATGateway'  
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Project
+          Value: !Ref Project          
+  PrivateRouteTable:
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName} Private Route Table'   
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Project
+          Value: !Ref Project          
+  NetGatewayRoute:
+    Type: 'AWS::EC2::Route'
+    DependsOn: NatGateway
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGateway         
+      
+  PrivateSubnet1RouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      SubnetId: !Ref privateSubnet1
+  PrivateSubnet2RouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      SubnetId: !Ref privateSubnet2    
+      
+  PublicAccessSG:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: Public access
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - CidrIp: 0.0.0.0/0
+          IpProtocol: tcp
+          FromPort: '443'
+          ToPort: '443'
+        - CidrIp: 0.0.0.0/0
+          IpProtocol: tcp
+          FromPort: '80'
+          ToPort: '80'
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName} public Security Group'
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Project
+          Value: !Ref Project          
+  PrivateAccessSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow ssh to client host
+      VpcId:   !Ref VPC
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: 22
+        ToPort: 22
+        CidrIp: 0.0.0.0/0
+      - IpProtocol: tcp
+        FromPort: 3306
+        ToPort: 3306
+        SourceSecurityGroupId: !Ref PublicAccessSG
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName} private Security Group'
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: Project
+          Value: !Ref Project        
+Outputs:
+  VPC:
+    Value: !Ref VPC
+    Description: ID of VPC
+    Export:
+      Name: !Sub ${AWS::StackName}-VPC
+  Publicsubnet1:
+    Value: !Ref publicSubnet1
+    Description: ID of public subnet1
+    Export:
+      Name: !Sub ${AWS::StackName}-publicsubnet1
+  Publicsubnet2:
+    Value: !Ref publicSubnet2
+    Description: ID of public subnet2
+    Export:
+      Name: !Sub ${AWS::StackName}-publicsubnet2
+
+  Privatesubnet1:
+    Value: !Ref privateSubnet1
+    Description: ID of private subnet1 
+    Export:
+      Name: !Sub '${AWS::StackName}-privatesubnet1'  
+  Privatesubnet2:
+    Value: !Ref privateSubnet2
+    Description: ID of private subnet2 
+    Export:
+      Name: !Sub '${AWS::StackName}-privatesubnet2'     
+  SecurityGroup:
+    Value: !Ref PublicAccessSG
+    Description: ID of security group
+    Export:
+      Name: !Sub ${AWS::StackName}-publicAccessSG
+  SecurityGroup2:
+    Value: !Ref  PrivateAccessSG
+    Description: ID of security group
+    Export:
+      Name: !Sub ${AWS::StackName}-privateaccessSG
+          
